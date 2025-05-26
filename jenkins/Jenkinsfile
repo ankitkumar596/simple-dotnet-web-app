@@ -1,31 +1,77 @@
 pipeline {
-    agent any 
-    stages {
-        stage('Build') { 
-            steps {
-                sh 'dotnet restore' 
-                sh 'dotnet build --no-restore' 
-            }
-        }
-        stage('Test') { 
-            steps {
-                sh 'dotnet test --no-build --no-restore --collect "XPlat Code Coverage"'
-            }
-            post {
-                always {
-                    recordCoverage(tools: [[parser: 'COBERTURA', pattern: '**/*.xml']], sourceDirectories: [[path: 'SimpleWebApi.Test/TestResults']])
-                }
-            }
-        }
-        stage('Deliver') { 
-            steps {
-                sh 'dotnet publish SimpleWebApi --no-restore -o published' 
-            }
-            post {
-                success {
-                    archiveArtifacts 'published/*.*'
-                }
-            }
-        }
-    }
+    agent any
+
+
+
+    tools {
+        dotnetsdk 'dotnet'
+    }
+
+
+
+    environment {
+        REMOTE_USER = 'azureuser'
+        REMOTE_HOST = 'ip'
+        REMOTE_PATH = '/home/azureuser/deployment' // Update as needed
+    }
+
+
+
+    stages {
+        stage('Git Clone') {
+            steps {
+                git branch: 'main', url: 'https://github.com/ankitkumar596/simple-dotnet-web-app.git'
+            }
+        }
+
+
+
+        stage('Build') {
+            steps {
+                sh 'dotnet --version'
+                sh 'dotnet restore'
+                sh 'dotnet build --no-restore'
+            }
+        }
+
+
+
+        stage('Publish') {
+            steps {
+                sh 'dotnet publish SimpleWebApi --no-restore -o published'
+            }
+            post {
+                success {
+                    archiveArtifacts artifacts: 'published/**/*.*', allowEmptyArchive: true
+                }
+            }
+        }
+
+
+
+        stage('Copy to Remote Server') {
+            steps {
+                sh """
+                    echo "Copying files to remote server..."
+                    ssh ${REMOTE_USER}@${REMOTE_HOST} "mkdir -p ${REMOTE_PATH}"
+                    scp -r published/* ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}/
+                    
+
+
+
+                """
+            }
+        }
+        stage('Restart Service') {
+            steps {
+                sh """
+                azureuser@20.84.58.99 "sudo systemctl restart simplewebapi.service"
+                """
+                
+            }
+        }
+
+
+
+    }
 }
